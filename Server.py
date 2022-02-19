@@ -149,9 +149,7 @@ def Send_Data (Client_SD, Server_Response, epoll):
         if sockdes in Client_SD:
             if Server_Response[sockdes] == '':
                 epoll.modify(sockdes, select.EPOLLOUT)
-                Server_Response[sockdes] = Server_Response[sockdes].encode()
-                byteswritten = Client_SD[sockdes].send(Server_Response[sockdes])
-                Server_Response[sockdes] = Server_Response[sockdes][byteswritten:]
+                Client_SD[sockdes].send()
                 epoll.modify(sockdes, select.EPOLLIN)
 
 #----------------------------------------------------------------------------------------------------------------
