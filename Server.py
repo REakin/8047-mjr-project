@@ -10,6 +10,10 @@ from threading import Thread
 from xmlrpc.client import Server
 import time
 import os
+import pyaudio
+import wave
+
+
 
 #Logging imports
 import logging
@@ -19,6 +23,7 @@ ServerPort = 8000   # Listening port
 MAXCONN = 10000        # Maximum connections
 BUFLEN = 1024        # Max buffer size
 THREADNUM = 4      # number of threads in pool
+p = pyaudio.PyAudio()
 
 #----------------------------------------------------------------------------------------------------------------
 # Main server function 
@@ -67,11 +72,13 @@ def EpollServer (address):
         IpAddr.append(tmp_IP)
         # set thread to manage data collection and logging
         t = Thread(target=handle_connection, args=(Client_SD[i], Client_req[i], Server_Response[i], epolls[i], DataTransfered[i], RequestCounts[i], IpAddr[i]))
+        a = Thread(target=AudioStreaming, args=(Client_SD[i], epolls[i]))
         workers.append(t)
 
     #start the threads
     for t in workers:
         t.start()
+        a.start()
 
     iteration = 0
     while True:
@@ -92,7 +99,6 @@ def handle_connection (Client_SD, Client_Reqs, Server_Response, epoll, DataTrans
                     Receive_Message (sockdes, Client_Reqs, Client_SD, Server_Response, epoll, DataTransfered, RequestCounts, IpAddr)
                 elif event & select.EPOLLOUT: #send data to client
                     Echo_Response (sockdes, Client_SD, Server_Response, epoll, DataTransfered)
-
 #----------------------------------------------------------------------------------------------------------------
 # Process Client Connections
 def init_connection (server, Client_SD, Client_Reqs, Server_Response, epoll, dataTransfered, requestCounts, ipAddr):
@@ -110,8 +116,6 @@ def init_connection (server, Client_SD, Client_Reqs, Server_Response, epoll, dat
     dataTransfered[fd] = 0
     requestCounts[fd] = 0
     ipAddr[fd] = address
-
-
 #----------------------------------------------------------------------------------------------------------------
 # Receive a request and send an ACK with echo
 def Receive_Message (sockdes, Client_Reqs, Client_SD, Server_Response, epoll, DataTransfered, RequestCounts, IpAddr):
@@ -134,23 +138,23 @@ def Receive_Message (sockdes, Client_Reqs, Client_SD, Server_Response, epoll, Da
         Client_Reqs[sockdes] = ''
 #----------------------------------------------------------------------------------------------------------------
 # Send a response to the client
-def Echo_Response (sockdes, Client_SD, Server_Response, epoll, DataTransfered):
+def Echo_Response (sockdes, Client_SD, Server_Response, epoll):
     data = Server_Response[sockdes].encode()
-    DataTransfered[sockdes] += sys.getsizeof(data)
     byteswritten = Client_SD[sockdes].send(data)
-    Server_Response[sockdes] = Server_Response[sockdes][byteswritten:]
     epoll.modify(sockdes, select.EPOLLIN)
     # print ("Response Sent")
-
 #----------------------------------------------------------------------------------------------------------------
-# Send data every 10 seconds to all connected clients
-def Send_Data (Client_SD, Server_Response, epoll):
-    for sockdes in Client_SD:
-        if sockdes in Client_SD:
-            if Server_Response[sockdes] == '':
-                epoll.modify(sockdes, select.EPOLLOUT)
-                Client_SD[sockdes].send()
-                epoll.modify(sockdes, select.EPOLLIN)
+# Audio Streaming
+def AudioStreaming(Client_SD, epoll):
+    wf  = wave.open("test.wav", 'rb')
+    stream = p.open(format = p.get_format_from_width(wf.getsampwidth()),channels=wf.getnchannels(),rate=wf.getframerate(),output=True)
+    data = wf.readframes(BUFLEN)
+    while data != '':
+        stream.write(data)
+        data = wf.readframes(BUFLEN)
+        for sockdes in Client_SD:
+            Echo_Response (sockdes, Client_SD, data, epoll)
+    stream.close()
 
 #----------------------------------------------------------------------------------------------------------------
 # Use context manager to free socket resources upon termination
