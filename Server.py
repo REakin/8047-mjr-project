@@ -35,7 +35,6 @@ def EpollServer (address):
     epollmain = select.epoll()
     epollmain.register(server.fileno(), select.EPOLLIN)
 
-
     Client_SD = []
     Server_Response = []
     server_SD = server.fileno() #get the server socket descriptor 
@@ -49,8 +48,6 @@ def EpollServer (address):
     Client_SD = []
     Client_req = []
     workers = []
-
-
 
     for i in range(THREADNUM):
         # Create mutiple epoll objects for the threads
@@ -124,10 +121,6 @@ def Receive_Message (sockdes, Client_Reqs, Client_SD, Server_Response, epoll, Da
     # Make sure client connection is still open    
     if Client_Reqs[sockdes] == 'quit\n' or Client_Reqs[sockdes] == '':
         print('[{:02d}] Client Connection Closed!'.format(sockdes))
-        
-        #Output connection details
-        logging.debug("IP:"+str(IpAddr[sockdes][0])+" Port:"+str(IpAddr[sockdes][1])+" Data Transfered:"+str(DataTransfered[sockdes])+" Requests:"+str(RequestCounts[sockdes]))
-        
         epoll.unregister(sockdes)
         Client_SD[sockdes].close()
         del Client_SD[sockdes], Client_Reqs[sockdes], Server_Response[sockdes], DataTransfered[sockdes], RequestCounts[sockdes], IpAddr[sockdes]
@@ -137,10 +130,6 @@ def Receive_Message (sockdes, Client_Reqs, Client_SD, Server_Response, epoll, Da
         epoll.modify(sockdes, select.EPOLLOUT)
         msg = Client_Reqs[sockdes][:-1]
         RequestCounts[sockdes] += 1
-
-        # print("[{:02d}] Received Client Message: {}".format (sockdes, msg))
-        # ACK + received string
-        # Server_Response[sockdes] = 'ACK => ' + Client_Reqs[sockdes]
         Server_Response[sockdes] = Client_Reqs[sockdes]
         Client_Reqs[sockdes] = ''
 #----------------------------------------------------------------------------------------------------------------
@@ -152,6 +141,18 @@ def Echo_Response (sockdes, Client_SD, Server_Response, epoll, DataTransfered):
     Server_Response[sockdes] = Server_Response[sockdes][byteswritten:]
     epoll.modify(sockdes, select.EPOLLIN)
     # print ("Response Sent")
+
+#----------------------------------------------------------------------------------------------------------------
+# Send data every 10 seconds to all connected clients
+def Send_Data (Client_SD, Server_Response, epoll):
+    for sockdes in Client_SD:
+        if sockdes in Client_SD:
+            if Server_Response[sockdes] == '':
+                epoll.modify(sockdes, select.EPOLLOUT)
+                Server_Response[sockdes] = Server_Response[sockdes].encode()
+                byteswritten = Client_SD[sockdes].send(Server_Response[sockdes])
+                Server_Response[sockdes] = Server_Response[sockdes][byteswritten:]
+                epoll.modify(sockdes, select.EPOLLIN)
 
 #----------------------------------------------------------------------------------------------------------------
 # Use context manager to free socket resources upon termination
@@ -180,12 +181,6 @@ def epollcontext (*args, **kwargs):
 # Start the epoll server & Process keyboard interrupt CTRL-C
 if __name__ == '__main__':
     try:
-        #create logging directory
-        if not os.path.exists(LOGDIR):
-            os.makedirs(LOGDIR)
-        #create log file
-        logging.getLogger().handlers.clear()
-        logging.basicConfig(filename=LOGDIR+str(time.time()), level=logging.DEBUG, format='%(asctime)s %(message)s')
         EpollServer (("0.0.0.0", ServerPort))
     except KeyboardInterrupt as e:
         print("Server Shutdown")

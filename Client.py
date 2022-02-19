@@ -8,7 +8,7 @@ import threading
 import time
 
 import logging
-
+import pyaudio
 
 #global variables
 LOGDIR = "./Output/Client/"
@@ -17,49 +17,41 @@ thread_count = 10000
 bufferSize = 1025
 requestCount = 10
 
+
 #----------------------------------------------------------------------------------------------------------------
 
-def clientThead(server_address, requestCount, message, thread_id):
+def clientThead(server_address, p):
     print("Starting client thread")
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(server_address)
-    message = message.encode()
     print("Connected to server")
-    # record transfer information
-    total_bytes = 0
-    total_delay = 0
-    total_requests = 0
-    total_duration = 0
-
-    # record the start time
-    start_time = time.time()
-
-    # start sending requests
-    for i in range(requestCount):
-        sock.send(message) #sends the message to the server
-        data = sock.recv(1024) #receives the message from the server
-        total_bytes += sys.getsizeof(data) #saves total amount of bytes received
-        total_requests += 1 #saves total amount of requests sent   
-    sock.send(b'quit\n') #sends the quit message to the server
-    duration_end = time.time()
-    total_duration = duration_end - start_time
-    average_delay = total_duration / total_requests
-
-    #recording results to log
-    logging.info("%d, %d, %d, %f, %f, %f" % (thread_id, total_requests, total_bytes, total_duration, total_bytes/total_duration, average_delay))
-    # sock.close()
+    # write reciving data to array
+    data = []
+    # start playing
+    stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, output=True)
+    # start reciving data
+    while True:
+        # recive data
+        data = sock.recv(bufferSize)
+        # if no data recived, break
+        if not data:
+            break
+        # write data to array
+        stream.write(data)
+    # close stream
+    stream.stop_stream()
+    stream.close()
+    # close socket
+    sock.close()
+    # close pyaudio
+    p.terminate()
+    print("Client thread finished")
 
 def main(address, port):
     server_address = (address, port)
+    p = pyaudio.PyAudio()
     print(server_address)
-    #fill message with random characters according to the buffersize
-    message = "a" * (bufferSize-2)+"\n"
-    print("Starting %d threads" % thread_count)
-    for i in range(thread_count):
-        t = threading.Thread(target=clientThead, args=(server_address, requestCount, message, i))
-        t.start()
-        workers.append(t)
-
+    t = threading.Thread(target=clientThead, args=(server_address, p))
     for t in workers:
         t.join()   # wait for all threads to finish before closing the program
     
@@ -69,11 +61,4 @@ if __name__ == "__main__":
     if len(sys.argv) != 3:
         print('usage: %s <address> <port>' % sys.argv[0])
         sys.exit(1)
-    #create logging directory if it doesn't exist
-    if not os.path.exists(LOGDIR):
-        os.makedirs(LOGDIR)
-    #create log file
-    logging.getLogger().handlers.clear()
-    logging.basicConfig(filename=LOGDIR+str(thread_count)+".csv",level=logging.DEBUG, format='%(message)s')
-    logging.info("Thread, Requests, Bytes, Duration, MB/s, Average Delay")
     main(sys.argv[1], int(sys.argv[2]))
