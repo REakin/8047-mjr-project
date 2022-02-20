@@ -6,54 +6,68 @@ import sys
 import os
 import threading
 import time
+import pickle
+import struct
 
 import logging
-import pyaudio
+
+#audio imports
+import sounddevice as sd
+import soundfile as sf
+import numpy as np
 
 #global variables
 LOGDIR = "./Output/Client/"
 workers = []
 thread_count = 10000
-bufferSize = 1025
+bufferSize = 8192
 requestCount = 10
 
 
 #----------------------------------------------------------------------------------------------------------------
-
-def clientThead(server_address, p):
+def clientThead(server_address):
     print("Starting client thread")
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect(server_address)
     print("Connected to server")
-    # write reciving data to array
-    data = []
-    # start playing
-    stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, output=True)
+
+    stream = sd.OutputStream(device=None, channels=2, dtype="int16", samplerate=48000, blocksize=2000, latency='high')
+    stream.start()
+    # t = threading.Thread(target=audioThread, args=(stream,))
+    # t.start()
     # start reciving data
+
+    buffer = b''
     while True:
         # recive data
         data = sock.recv(bufferSize)
-        # if no data recived, break
         if not data:
             break
-        # write data to array
-        stream.write(data)
-    # close stream
-    stream.stop_stream()
-    stream.close()
+        if data != b'\n':
+            buffer += data
+        else:
+            # print(buffer)
+            data = pickle.loads(buffer)
+            # print(data)
+            stream.write(data.astype(np.int16))
+            buffer = b''
     # close socket
     sock.close()
-    # close pyaudio
-    p.terminate()
+    # t.join()
     print("Client thread finished")
+#----------------------------------------------------------------------------------------------------------------
+def audioThread(stream):
+    stream.start()
+    while True:
+        pass
+
 
 def main(address, port):
     server_address = (address, port)
-    p = pyaudio.PyAudio()
     print(server_address)
-    t = threading.Thread(target=clientThead, args=(server_address, p))
-    for t in workers:
-        t.join()   # wait for all threads to finish before closing the program
+    t=threading.Thread(target=clientThead, args=(server_address,))
+    t.start()
+    t.join()
     
 
 if __name__ == "__main__":
