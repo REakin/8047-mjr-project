@@ -4,13 +4,16 @@
 from __future__ import print_function
 from contextlib import contextmanager
 import socket
+import pickle
 import select
 import sys
 from threading import Thread
 from xmlrpc.client import Server
 import time
 import os
-import pyaudio
+import sounddevice as sd
+import numpy as np
+import soundfile as sf
 import wave
 
 
@@ -21,9 +24,8 @@ import logging
 LOGDIR = "./Output/Server/"
 ServerPort = 8000   # Listening port
 MAXCONN = 10000        # Maximum connections
-BUFLEN = 1024        # Max buffer size
-THREADNUM = 4      # number of threads in pool
-p = pyaudio.PyAudio()
+BUFLEN = 2000        # Max buffer size
+THREADNUM = 1      # number of threads in pool
 
 #----------------------------------------------------------------------------------------------------------------
 # Main server function 
@@ -53,6 +55,7 @@ def EpollServer (address):
     Client_SD = []
     Client_req = []
     workers = []
+    audioworkers = []
 
     for i in range(THREADNUM):
         # Create mutiple epoll objects for the threads
@@ -74,10 +77,12 @@ def EpollServer (address):
         t = Thread(target=handle_connection, args=(Client_SD[i], Client_req[i], Server_Response[i], epolls[i], DataTransfered[i], RequestCounts[i], IpAddr[i]))
         a = Thread(target=AudioStreaming, args=(Client_SD[i], epolls[i]))
         workers.append(t)
+        audioworkers.append(a)
 
     #start the threads
     for t in workers:
         t.start()
+    for a in audioworkers:
         a.start()
 
     iteration = 0
@@ -98,7 +103,8 @@ def handle_connection (Client_SD, Client_Reqs, Server_Response, epoll, DataTrans
                 if event & select.EPOLLIN:  #receive data from client
                     Receive_Message (sockdes, Client_Reqs, Client_SD, Server_Response, epoll, DataTransfered, RequestCounts, IpAddr)
                 elif event & select.EPOLLOUT: #send data to client
-                    Echo_Response (sockdes, Client_SD, Server_Response, epoll, DataTransfered)
+                    # Echo_Response (sockdes, Client_SD, Server_Response, epoll)
+                    pass
 #----------------------------------------------------------------------------------------------------------------
 # Process Client Connections
 def init_connection (server, Client_SD, Client_Reqs, Server_Response, epoll, dataTransfered, requestCounts, ipAddr):
@@ -138,25 +144,64 @@ def Receive_Message (sockdes, Client_Reqs, Client_SD, Server_Response, epoll, Da
         Client_Reqs[sockdes] = ''
 #----------------------------------------------------------------------------------------------------------------
 # Send a response to the client
-def Echo_Response (sockdes, Client_SD, Server_Response, epoll):
-    data = Server_Response[sockdes].encode()
-    byteswritten = Client_SD[sockdes].send(data)
+def Echo_Response (sockdes, Client_SD, data, epoll):
+    Client_SD[sockdes].send(data)
     epoll.modify(sockdes, select.EPOLLIN)
     # print ("Response Sent")
 #----------------------------------------------------------------------------------------------------------------
 # Audio Streaming
 def AudioStreaming(Client_SD, epoll):
-    wf  = wave.open("test.wav", 'rb')
-    stream = p.open(format = p.get_format_from_width(wf.getsampwidth()),channels=wf.getnchannels(),rate=wf.getframerate(),output=True)
-    data = wf.readframes(BUFLEN)
-    while data != '':
-        stream.write(data)
-        data = wf.readframes(BUFLEN)
-        for sockdes in Client_SD:
-            Echo_Response (sockdes, Client_SD, data, epoll)
-    stream.close()
+    time.sleep(2)
+
+    with sf.SoundFile('test.wav', 'rb') as f:
+        while f.tell() < f.frames:
+            data = f.read(BUFLEN)
+            data = data*1000
+            data = data.astype(np.int16)
+            data = pickle.dumps(data)
+            # print(data)
+
+            # data = pickle.dumps(data*1000)
+            for sockdes in Client_SD:
+                if sockdes in Client_SD:
+                    epoll.modify(sockdes, select.EPOLLOUT)
+                    Client_SD[sockdes].send(data)
+                    Client_SD[sockdes].send(b'\n')
+                    # print ("Audio Sent")
+            time.sleep(0.05)
+
+
+    print("Audio Streaming Finished")
+
+    # wf = wave.open('test.wav', 'rb')
+    # data = np.fromfile('test.wav', dtype=np.int16)
+    # stream = sd.InputStream(samplerate=44100, channels=1, dtype='int16', callback=callback)
+    # stream.start()
+    # stream.write(data)
+
+
+    # send 10 packets then wait 2 seconds
+    # for i in range(0, len(data),50):
+    #     #encode data
+    #     data_encoded = data[i:i+50]
+    #     print(data_encoded)
+    #     data_string = pickle.dumps(data_encoded)
+    #     #send data
+    #     for sockdes in Client_SD:
+    #         epoll.modify(sockdes, select.EPOLLOUT)
+    #         Client_SD[sockdes].send(data_string)
+    # wf  = wave.open("test.wav", 'rb')
+    # data = wf.readframes(BUFLEN)
+    # while data != '':
+    #     data = wf.readframes(BUFLEN)
+    #     for sockdes in Client_SD:
+    #         Echo_Response (sockdes, Client_SD, data, epoll)
 
 #----------------------------------------------------------------------------------------------------------------
+# callback
+def callback(indata, frames, time, status):
+    print(indata)
+    # print(frames)
 # Use context manager to free socket resources upon termination
 @contextmanager   # Socket Context (resource) manager
 def socketcontext(*args, **kwargs):
