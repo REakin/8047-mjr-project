@@ -49,6 +49,10 @@ def clientThead(server_address):
             # print(buffer)
             data = pickle.loads(buffer)
             # print(data)
+            #implment staganography decryption
+            extract = data[data[:,1] == -2000]
+            try:print(chr(extract[0][0]))
+            except:pass
             stream.write(data.astype(np.int16))
             buffer = b''
     # close socket

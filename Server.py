@@ -14,7 +14,6 @@ import os
 import sounddevice as sd
 import numpy as np
 import soundfile as sf
-import wave
 
 
 
@@ -24,13 +23,15 @@ import logging
 LOGDIR = "./Output/Server/"
 ServerPort = 8000   # Listening port
 MAXCONN = 10000        # Maximum connections
-BUFLEN = 2000        # Max buffer size
+BUFLEN = 2048        # Max buffer size
 THREADNUM = 1      # number of threads in pool
+TESTSTRING = "Hello World"
+#----------------------------------------------------------------------------------------------------------------
+
 
 #----------------------------------------------------------------------------------------------------------------
 # Main server function 
 def EpollServer (address):
-    
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)   # Allow multiple bindings to port
     server.bind(address)
@@ -117,7 +118,6 @@ def init_connection (server, Client_SD, Client_Reqs, Server_Response, epoll, dat
     Client_SD[fd] = connection
     Server_Response[fd] = ''
     Client_Reqs[fd] = ''
-
     # Logging
     dataTransfered[fd] = 0
     requestCounts[fd] = 0
@@ -128,7 +128,7 @@ def Receive_Message (sockdes, Client_Reqs, Client_SD, Server_Response, epoll, Da
     data = Client_SD[sockdes].recv(BUFLEN)
     Client_Reqs[sockdes] += data.decode()
 
-    # Make sure client connection is still open    
+    # Make sure client connection is still open 
     if Client_Reqs[sockdes] == 'quit\n' or Client_Reqs[sockdes] == '':
         print('[{:02d}] Client Connection Closed!'.format(sockdes))
         epoll.unregister(sockdes)
@@ -151,17 +151,17 @@ def Echo_Response (sockdes, Client_SD, data, epoll):
 #----------------------------------------------------------------------------------------------------------------
 # Audio Streaming
 def AudioStreaming(Client_SD, epoll):
+    test = TESTSTRING
     time.sleep(2)
-
     with sf.SoundFile('test.wav', 'rb') as f:
         while f.tell() < f.frames:
             data = f.read(BUFLEN)
             data = data*1000
             data = data.astype(np.int16)
+            try:data = data[::2] = [ord(test[0]), -100]
+            except: pass
             data = pickle.dumps(data)
-            # print(data)
-
-            # data = pickle.dumps(data*1000)
+            
             for sockdes in Client_SD:
                 if sockdes in Client_SD:
                     epoll.modify(sockdes, select.EPOLLOUT)
@@ -169,6 +169,7 @@ def AudioStreaming(Client_SD, epoll):
                     Client_SD[sockdes].send(b'\n')
                     # print ("Audio Sent")
             time.sleep(0.05)
+            test = test[1:]
 
 
     print("Audio Streaming Finished")
