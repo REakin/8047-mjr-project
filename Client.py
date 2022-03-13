@@ -36,7 +36,7 @@ def clientThead(server_address):
     # t = threading.Thread(target=audioThread, args=(stream,))
     # t.start()
     # start reciving data
-
+    key = -100
     buffer = b''
     while True:
         # recive data
@@ -50,7 +50,7 @@ def clientThead(server_address):
             data = pickle.loads(buffer)
             # print(data)
             #implment staganography decryption
-            extract = data[data[:,1] == -2000]
+            extract = data[data[:,1] == key]
             try:print(chr(extract[0][0]))
             except:pass
             stream.write(data.astype(np.int16))

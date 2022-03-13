@@ -14,7 +14,7 @@ import os
 import sounddevice as sd
 import numpy as np
 import soundfile as sf
-
+import pyogg
 
 
 #Logging imports
@@ -152,22 +152,23 @@ def Echo_Response (sockdes, Client_SD, data, epoll):
 # Audio Streaming
 def AudioStreaming(Client_SD, epoll):
     test = TESTSTRING
+    key = -100
     time.sleep(2)
-    with sf.SoundFile('test.wav', 'rb') as f:
+    pyogg.pyoggSetStreamBufferSize(BUFLEN)
+    with pyogg.VorbisFileStream("vtest.ogg") as f:
         while f.tell() < f.frames:
-            data = f.read(BUFLEN)
-            data = data*1000
-            data = data.astype(np.int16)
-            try:data = data[::2] = [ord(test[0]), -100]
-            except: pass
-            data = pickle.dumps(data)
-            
+            data = f.get_buffer()[0]
+            data = np.frombuffer(data, dtype=np.int16)
+            data = np.reshape(data, (-1, 2))
+            newdata = data.copy()
+            try:newdata[1] = [ord(test[0]), key] 
+            except:pass
+            newdata = pickle.dumps(newdata)
             for sockdes in Client_SD:
                 if sockdes in Client_SD:
                     epoll.modify(sockdes, select.EPOLLOUT)
-                    Client_SD[sockdes].send(data)
+                    Client_SD[sockdes].send(newdata)
                     Client_SD[sockdes].send(b'\n')
-                    # print ("Audio Sent")
             time.sleep(0.05)
             test = test[1:]
 
