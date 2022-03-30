@@ -8,30 +8,103 @@ import pickle
 import select
 import sys
 from threading import Thread
+import _thread
 from xmlrpc.client import Server
 import time
 import os
+
+#audio import
 import sounddevice as sd
 import numpy as np
 import soundfile as sf
 import pyogg
 
+#UI import
+import tkinter as tk
+from tkinter import ttk as ttk
+from tkinter import *
 
 #Logging imports
 import logging
 
+#Global Variables
 LOGDIR = "./Output/Server/"
 ServerPort = 8000   # Listening port
 MAXCONN = 10000        # Maximum connections
 BUFLEN = 2048        # Max buffer size
 THREADNUM = 1      # number of threads in pool
 TESTSTRING = "Hello World"
+KEY = 111
 #----------------------------------------------------------------------------------------------------------------
+# UI Class
+class UI(Thread):
+    def __init__(self):
+        Thread.__init__(self)
+        self.files = os.listdir(os.getcwd())
+        self.daemon = True
+        self.start()
 
+    def run(self):
+        self.root = Tk()
+        self.root.title("Audio Player")
+        self.root.resizable(False, False)
+        self.root.configure(background='black')
+        #create widgets
+        self.widget_frame = ttk.Frame(self.root, padding="3 3 12 12")
+        self.widget_frame.grid(column=0, row=0, sticky=(N, W, E, S))
+        self.widget_frame.columnconfigure(0, weight=1)
+        self.widget_frame.rowconfigure(0, weight=1)
+        self.entry = ttk.Entry(self.widget_frame)
+        self.entry.bind("<Return>", self.send_message)
+        self.entry.grid(column=0, row=1, sticky=(W, E))
+        self.button = ttk.Button(self.widget_frame, text="Send", command=self.send_message)
+        self.button.grid(column=0, row=2, sticky=(W, E))
+        #create a list of all files in the directory
+        self.treeview = ttk.Treeview(self.root)
+        self.populate()
+        #create a text box to display the messages
+        self.extratext = Text(self.root, width=25, height=10)
+        self.extratext.grid(row=1, column=1)
+        #on exit close the window
+        self.root.protocol("WM_DELETE_WINDOW", lambda: self.end())
+        self.root.mainloop()
+
+    def add_text(self, text):
+        try:self.extratext.insert("end", chr(text))
+        except:pass
+
+    def end(self):
+        self.root.destroy()
+        print("Exiting")
+        _thread.interrupt_main()
+
+    def send_message(self, event=None):
+        global teststring
+        message = self.entry.get()
+        if message == "":
+            return
+        self.entry.delete(0, 'end')
+        teststring += message
+
+    def populate(self):
+        for file in self.files:
+            if file[-4:] == ".ogg":
+                self.treeview.insert("", "end", file, text=file)
+        self.treeview.bind("<Double-1>", self.on_double_click)
+        self.treeview.grid(row=0, column=1)
+
+    def on_double_click(self, event):
+        global file
+        item = self.treeview.selection()[0]
+        # self.text.insert("1.0", item)
+        file = pyogg.VorbisFileStream(item)
 
 #----------------------------------------------------------------------------------------------------------------
 # Main server function 
 def EpollServer (address):
+    #create UI
+    ui = UI()
+    #create a socket
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)   # Allow multiple bindings to port
     server.bind(address)
@@ -151,54 +224,32 @@ def Echo_Response (sockdes, Client_SD, data, epoll):
 #----------------------------------------------------------------------------------------------------------------
 # Audio Streaming
 def AudioStreaming(Client_SD, epoll):
-    test = TESTSTRING
-    key = -100
+    global file
+    global TESTSTRING
+    key = KEY
     time.sleep(2)
     pyogg.pyoggSetStreamBufferSize(BUFLEN)
-    with pyogg.VorbisFileStream("vtest.ogg") as f:
-        while f.tell() < f.frames:
-            data = f.get_buffer()[0]
-            data = np.frombuffer(data, dtype=np.int16)
-            data = np.reshape(data, (-1, 2))
-            newdata = data.copy()
-            try:newdata[1] = [ord(test[0]), key] 
-            except:pass
-            newdata = pickle.dumps(newdata)
-            for sockdes in Client_SD:
-                if sockdes in Client_SD:
-                    epoll.modify(sockdes, select.EPOLLOUT)
-                    Client_SD[sockdes].send(newdata)
-                    Client_SD[sockdes].send(b'\n')
-            time.sleep(0.05)
-            test = test[1:]
-
+    file = pyogg.VorbisFileStream("vtest.ogg")
+    while True:
+        data = file.get_buffer()[0]
+        if data is None: 
+            pass
+        data = np.frombuffer(data, dtype=np.int16)
+        #convert to two channels
+        data = np.reshape(data, (-1, 2))
+        newdata = data.copy()
+        try:newdata[1] = [ord(TESTSTRING[0]), key]
+        except:pass
+        newdata = pickle.dumps(newdata)
+        for sockdes in Client_SD:
+            if sockdes in Client_SD:
+                epoll.modify(sockdes, select.EPOLLOUT)
+                Client_SD[sockdes].send(newdata)
+                Client_SD[sockdes].send(b'\n')
+        TESTSTRING = TESTSTRING[1:]
+        time.sleep(.1)
 
     print("Audio Streaming Finished")
-
-    # wf = wave.open('test.wav', 'rb')
-    # data = np.fromfile('test.wav', dtype=np.int16)
-    # stream = sd.InputStream(samplerate=44100, channels=1, dtype='int16', callback=callback)
-    # stream.start()
-    # stream.write(data)
-
-
-    # send 10 packets then wait 2 seconds
-    # for i in range(0, len(data),50):
-    #     #encode data
-    #     data_encoded = data[i:i+50]
-    #     print(data_encoded)
-    #     data_string = pickle.dumps(data_encoded)
-    #     #send data
-    #     for sockdes in Client_SD:
-    #         epoll.modify(sockdes, select.EPOLLOUT)
-    #         Client_SD[sockdes].send(data_string)
-    # wf  = wave.open("test.wav", 'rb')
-    # data = wf.readframes(BUFLEN)
-    # while data != '':
-    #     data = wf.readframes(BUFLEN)
-    #     for sockdes in Client_SD:
-    #         Echo_Response (sockdes, Client_SD, data, epoll)
-
 #----------------------------------------------------------------------------------------------------------------
 # callback
 def callback(indata, frames, time, status):
