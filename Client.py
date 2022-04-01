@@ -83,6 +83,7 @@ def main(address, port):
     stream.start()
 
     t= threading.Thread(target=playAudio, args=(stream,))
+    t.daemon = True
     t.start()
    
     # start reciving data

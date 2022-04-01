@@ -6,26 +6,19 @@ from contextlib import contextmanager
 import socket
 import pickle
 import select
-import sys
 from threading import Thread
 import _thread
-from xmlrpc.client import Server
 import time
 import os
 
 #audio import
-import sounddevice as sd
 import numpy as np
-import soundfile as sf
 import pyogg
 
 #UI import
 import tkinter as tk
 from tkinter import ttk as ttk
 from tkinter import *
-
-#Logging imports
-import logging
 
 #Global Variables
 LOGDIR = "./Output/Server/"
