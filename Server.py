@@ -53,11 +53,15 @@ class UI(Thread):
         self.button = ttk.Button(self.widget_frame, text="Send", command=self.send_message)
         self.button.grid(column=0, row=2, sticky=(W, E))
         #create a list of all files in the directory
-        self.treeview = ttk.Treeview(self.root)
+        self.treeview = ttk.Treeview(self.root, columns=("File", "Channels", "Frequency"), show="headings")
+        self.treeview.heading("File", text="File")
+        self.treeview.heading("Channels", text="Channels")
+        self.treeview.heading("Frequency", text="Frequency")
         self.populate()
         #create a text box to display the messages
-        self.extratext = Text(self.root, width=25, height=10)
-        self.extratext.grid(row=1, column=1)
+        self.widget_frame2 = ttk.Frame(self.root, padding="3 3 12 12")
+        self.extratext = Text(self.widget_frame2)
+        self.widget_frame2.pack(fill=BOTH, expand=True)
         #on exit close the window
         self.root.protocol("WM_DELETE_WINDOW", lambda: self.end())
         self.root.mainloop()
@@ -82,16 +86,27 @@ class UI(Thread):
     def populate(self):
         for file in self.files:
             if file[-4:] == ".ogg":
-                self.treeview.insert("", "end", file, text=file)
+                info = pyogg.VorbisFile(file)
+                self.treeview.insert("", "end", values=(file, info.channels, info.frequency))
+
         self.treeview.bind("<Double-1>", self.on_double_click)
         self.treeview.grid(row=0, column=1)
 
     def on_double_click(self, event):
         global file
-        item = self.treeview.selection()[0]
+        item = self.treeview.selection()
+        file = self.treeview.item(item, "values")[0]
         # self.text.insert("1.0", item)
-        file = pyogg.VorbisFileStream(item)
+        file = pyogg.VorbisFileStream(file)
 
+    def load_file(self):
+        global TESTSTRING
+        TESTSTRING = ""
+        file = filedialog.askopenfilename(initialdir="/", title="Select file",
+                                          filetypes=(("Text files", "*.txt"),("all files", "*.*")))
+        if file != "":
+            data = open(file, "r").read()
+            TESTSTRING = data
 #----------------------------------------------------------------------------------------------------------------
 # Main server function 
 def EpollServer (address):
@@ -209,12 +224,6 @@ def Receive_Message (sockdes, Client_Reqs, Client_SD, Server_Response, epoll, Da
         Server_Response[sockdes] = Client_Reqs[sockdes]
         Client_Reqs[sockdes] = ''
 #----------------------------------------------------------------------------------------------------------------
-# Send a response to the client
-def Echo_Response (sockdes, Client_SD, data, epoll):
-    Client_SD[sockdes].send(data)
-    epoll.modify(sockdes, select.EPOLLIN)
-    # print ("Response Sent")
-#----------------------------------------------------------------------------------------------------------------
 # Audio Streaming
 def AudioStreaming(Client_SD, epoll):
     global file
@@ -243,11 +252,8 @@ def AudioStreaming(Client_SD, epoll):
         time.sleep(.1)
 
     print("Audio Streaming Finished")
+
 #----------------------------------------------------------------------------------------------------------------
-# callback
-def callback(indata, frames, time, status):
-    print(indata)
-    # print(frames)
 # Use context manager to free socket resources upon termination
 @contextmanager   # Socket Context (resource) manager
 def socketcontext(*args, **kwargs):
