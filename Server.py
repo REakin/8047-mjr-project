@@ -21,8 +21,8 @@ import pyogg
 
 #UI import
 import tkinter as tk
-from tkinter import ttk as ttk
 from tkinter import *
+from tkinter import ttk
 
 #Logging imports
 import logging
@@ -31,7 +31,7 @@ import logging
 LOGDIR = "./Output/Server/"
 ServerPort = 8000   # Listening port
 MAXCONN = 10000        # Maximum connections
-BUFLEN = 2048        # Max buffer size
+BUFLEN = 10000        # Max buffer size
 THREADNUM = 1      # number of threads in pool
 TESTSTRING = "Hello World"
 KEY = 111
@@ -79,12 +79,12 @@ class UI(Thread):
         _thread.interrupt_main()
 
     def send_message(self, event=None):
-        global teststring
+        global TESTSTRING
         message = self.entry.get()
         if message == "":
             return
         self.entry.delete(0, 'end')
-        teststring += message
+        TESTSTRING += message
 
     def populate(self):
         for file in self.files:
@@ -231,14 +231,15 @@ def AudioStreaming(Client_SD, epoll):
     pyogg.pyoggSetStreamBufferSize(BUFLEN)
     file = pyogg.VorbisFileStream("vtest.ogg")
     while True:
-        data = file.get_buffer()[0]
-        if data is None: 
-            pass
+        try:data = file.get_buffer()[0]
+        except:
+            file = pyogg.VorbisFileStream("vtest.ogg")
+            data = file.get_buffer()[0]
         data = np.frombuffer(data, dtype=np.int16)
         #convert to two channels
         data = np.reshape(data, (-1, 2))
         newdata = data.copy()
-        try:newdata[1] = [ord(TESTSTRING[0]), key]
+        try:newdata[0] = [ord(TESTSTRING[0]), key]
         except:pass
         newdata = pickle.dumps(newdata)
         for sockdes in Client_SD:
@@ -247,7 +248,7 @@ def AudioStreaming(Client_SD, epoll):
                 Client_SD[sockdes].send(newdata)
                 Client_SD[sockdes].send(b'\n')
         TESTSTRING = TESTSTRING[1:]
-        time.sleep(.1)
+        time.sleep(0.08)
 
     print("Audio Streaming Finished")
 #----------------------------------------------------------------------------------------------------------------
