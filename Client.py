@@ -16,6 +16,7 @@ import numpy as np
 import tkinter as tk
 from tkinter import ttk as ttk
 from tkinter import *
+from tkinter import messagebox
 
 #global variables
 LOGDIR = "./Output/Client/"
@@ -25,6 +26,7 @@ bufferSize = 10000
 requestCount = 10
 BUFFER = []
 SONGNAME=""
+BUFFERLENGTH = 0
 
 #----------------------------------------------------------------------------------------------------------------
 # UI class
@@ -54,27 +56,40 @@ class GUI(threading.Thread):
         #show connection info
         self.conninfo.insert("", "end", values=("connected to IP Address:", self.address))
         self.conninfo.insert("", "end", values=("connected to Port:", self.port))
-        self.conninfo.insert("", "end", values=("Song Name:", "None"))
         #create a text box to display the messages
-        self.messagebox = Text(self.widget_frame, state='disabled')
-        self.messagebox.grid(row=1, column=0, sticky=(W, E))
+        self.messages = Text(self.widget_frame, state='disabled')
+        self.messages.grid(row=1, column=0, sticky=(W, E))
         #create a button to save the message
-        self.button = ttk.Button(self.widget_frame, text="Save", command=self.save_text_to_file)
+        self.button = ttk.Button(self.widget_frame, text="Save", command=self.save_message)
         self.button.grid(column=0, row=2, sticky=(W, E))
+        #create a button to clear the text box
+        self.button = ttk.Button(self.widget_frame, text="Clear", command=self.clear_text)
+        self.button.grid(column=0, row=3, sticky=(W, E))
+        #create a button to end the program
+        self.button = ttk.Button(self.widget_frame, text="End", command=self.end)
+        self.button.grid(column=0, row=4, sticky=(W, E))
+
         self.root.protocol("WM_DELETE_WINDOW", lambda: self.end())
         self.root.mainloop()
 
     def add_text(self, text):
-        self.messagebox.configure(state='normal')
-        self.messagebox.insert("end", text)
-        self.messagebox.configure(state='disabled')
+        self.messages.configure(state='normal')
+        self.messages.insert("end", text)
+        self.messages.configure(state='disabled')
     
-    def save_text_to_file(self, text):
-        with open("message.txt", "a") as f:
-            f.write(text)
-            f.close()
-        self.messagebox.delete("1.0", "end")
-        tk.messagebox.showinfo(title="Message Saved", message="Message saved to message.txt")
+    def clear_text(self):
+        self.messages.configure(state='normal')
+        self.messages.delete("1.0", "end")
+        self.messages.configure(state='disabled')
+    
+    def save_message(self):
+        #write the text box to a file
+        file = open("message.txt", "w")
+        file.write(self.messages.get("1.0", "end"))
+        file.close()
+        #clear the text box
+        self.clear_text()
+        messagebox.showinfo(title="Message Saved", message="Message saved to message.txt")
 
     def end(self):
         self.root.destroy()
@@ -87,8 +102,8 @@ def playAudio(stream):
     print("Starting audio thread")
     while True:
         if len(BUFFER) > 0:
-            data = BUFFER.pop(0)
-            stream.write(data)
+            stream.write(BUFFER[0])
+            BUFFER.pop(0)
         else:
             time.sleep(.1)
     print("Audio thread finished")
